@@ -64,7 +64,7 @@ async function loadEvents() {
     const event = await import(`file://${eventFilePath}`);
     // loginReady contains once-property
     if (event.default.once) {
-      // ...args essentially contains all arguments Discord emits when for the event
+      // ...args essentially contains all arguments Discord emits when for the event (client)
       client.once(event.default.name, (...args) => {
         event.default.execute(...args);
       });
