@@ -6,7 +6,16 @@ import {
   createAudioPlayer,
   NoSubscriberBehavior,
 } from '@discordjs/voice';
+import { Innertube } from 'youtubei.js';
 import 'dotenv/config';
+
+function parseYoutubeId(url) {
+  const regexp =
+    /(?:youtube(?:-nocookie)?\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
+  const matches = url.match(regexp);
+
+  return matches ? matches[1] : null;
+}
 
 export default {
   cooldown: 5,
@@ -37,10 +46,6 @@ export default {
         flags: MessageFlags.Ephemeral,
       });
     }
-    await interaction.reply({
-      content: 'working',
-      flags: MessageFlags.Ephemeral,
-    });
 
     // Connect to the same voice channel as the user
     const connection = joinVoiceChannel({
@@ -76,5 +81,23 @@ export default {
         }
       },
     );
+
+    const videoId = parseYoutubeId(interaction.options.getString('url', true));
+
+    // if (videoId) {
+    //   return await interaction.reply(videoId);
+    // } else {
+    //   return await interaction.reply('video not found');
+    // }
+
+    const yt = await Innertube.create();
+
+    const ytmusic = yt.music;
+    const songInfo = await ytmusic.getInfo(videoId);
+    const stream = await yt.download(videoId, {
+      format: 'mp3',
+      quality: '360p',
+      type: 'audio',
+    });
   },
 };
