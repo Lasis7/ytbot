@@ -18,8 +18,11 @@ const client = new Client({
 // Collection of all the commands
 client.commands = new Collection();
 
-//Collection of command cooldowns
+// Collection of command cooldowns
 client.cooldowns = new Collection();
+
+// Collection of playlist queue
+client.queue = new Collection();
 
 // Path works after this for whatever reason
 const __dirname = path.resolve();

@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { getVoiceConnection } from '@discordjs/voice';
 
 export default {
   data: new SlashCommandBuilder()

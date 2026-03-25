@@ -5,16 +5,38 @@ import {
   entersState,
   createAudioPlayer,
   NoSubscriberBehavior,
+  createAudioResource,
+  StreamType,
+  AudioPlayerStatus,
 } from '@discordjs/voice';
-import { Innertube } from 'youtubei.js';
+import { spawn } from 'node:child_process';
 import 'dotenv/config';
+import { video_basic_info } from 'play-dl';
 
-function parseYoutubeId(url) {
+let connection = null;
+let audioPlayer = null;
+
+function checkUrl(url) {
+  const regexp =
+    /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu\.be))(\/(?:youtube\.com\/watch\?v=|embed\/|live\/|v\/)?)([\w\-]{11})((?:\?|\&)\S+)?$/;
+  const matches = url.match(regexp);
+
+  if (matches) {
+    return url;
+  }
+  return false;
+}
+
+async function parseId(url) {
   const regexp =
     /(?:youtube(?:-nocookie)?\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
   const matches = url.match(regexp);
 
   return matches ? matches[1] : null;
+}
+
+async function normalizeUrl(id) {
+  return `https://www.youtube.com/watch?v=${id}`;
 }
 
 export default {
@@ -47,57 +69,95 @@ export default {
       });
     }
 
-    // Connect to the same voice channel as the user
-    const connection = joinVoiceChannel({
-      channelId: userInVc.id,
-      guildId: process.env.GUILD_ID,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-    });
+    // Check if the given URL was valid
+    const videoUrl = checkUrl(interaction.options.getString('url', true));
 
-    const audioPlayer = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Pause,
-      },
-    });
+    if (videoUrl) {
+      if (!connection) {
+        // Connect to the same voice channel as the user
+        connection = joinVoiceChannel({
+          channelId: userInVc.id,
+          guildId: process.env.GUILD_ID,
+          adapterCreator: interaction.guild.voiceAdapterCreator,
+        });
+      }
 
-    const subscription = connection.subscribe(audioPlayer);
+      if (!audioPlayer) {
+        audioPlayer = createAudioPlayer({
+          behaviors: {
+            noSubscriber: NoSubscriberBehavior.Pause,
+          },
+        });
+      }
 
-    connection.on(
-      VoiceConnectionStatus.Disconnected,
-      async (oldState, newState) => {
-        console.log('disconnected');
-        try {
-          // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
-          await Promise.race([
-            // entersState allows the connection to be in a specific state for the given time before throwing an error
-            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
-          ]);
-        } catch {
-          // Stop the player, unsubscribe the connection and finally destory it, if the bot is truly disconnected, not if it is moving to another voice channel or such
-          audioPlayer.stop();
-          subscription.unsubscribe();
-          connection.destroy();
-        }
-      },
-    );
+      audioPlayer.on('error', (error) => {
+        console.error(error);
+      });
 
-    const videoId = parseYoutubeId(interaction.options.getString('url', true));
+      audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        interaction.reply('Queue is empty');
+      });
 
-    // if (videoId) {
-    //   return await interaction.reply(videoId);
-    // } else {
-    //   return await interaction.reply('video not found');
-    // }
+      const subscription = connection.subscribe(audioPlayer);
 
-    const yt = await Innertube.create();
+      connection.on(
+        VoiceConnectionStatus.Disconnected,
+        async (oldState, newState) => {
+          console.log('disconnected');
+          try {
+            // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
+            await Promise.race([
+              // entersState allows the connection to be in a specific state for the given time before throwing an error
+              entersState(connection, VoiceConnectionStatus.Signalling, 5000),
+              entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+            ]);
+          } catch {
+            // Stop the player, unsubscribe the connection and finally destory it, if the bot is truly disconnected, not if it is moving to another voice channel or such
+            audioPlayer.stop();
+            subscription.unsubscribe();
+            connection.destroy();
+          }
+        },
+      );
 
-    const ytmusic = yt.music;
-    const songInfo = await ytmusic.getInfo(videoId);
-    const stream = await yt.download(videoId, {
-      format: 'mp3',
-      quality: '360p',
-      type: 'audio',
-    });
+      const id = await parseId(videoUrl);
+
+      const url = await normalizeUrl(id);
+      console.log(url);
+
+      interaction.reply('YO');
+
+      // yt-dlp options
+      const musicProcess = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
+      musicProcess.stderr.on('data', (error) =>
+        console.error(error.toString()),
+      );
+
+      // Spawn ffmpeg to decode the audio into raw PCM for Discord
+      const ffmpeg = spawn('ffmpeg', [
+        '-i',
+        'pipe:0', // input from yt-dlp stdout
+        '-f',
+        's16le', // PCM 16-bit little endian
+        '-ar',
+        '48000', // sample rate for Discord
+        '-ac',
+        '2', // stereo
+        'pipe:1', // output to stdout
+      ]);
+      ffmpeg.stderr.on('data', (error) => console.error(error.toString()));
+
+      musicProcess.stdout.pipe(ffmpeg.stdin);
+
+      const resource = createAudioResource(ffmpeg.stdout, {
+        inputType: StreamType.Raw,
+      });
+      audioPlayer.play(resource);
+    } else {
+      await interaction.reply({
+        content: 'Please provide a valid URL',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   },
 };
