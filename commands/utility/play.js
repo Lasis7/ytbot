@@ -13,9 +13,6 @@ import { spawn } from 'node:child_process';
 import 'dotenv/config';
 import { video_basic_info } from 'play-dl';
 
-let connection = null;
-let audioPlayer = null;
-
 function checkUrl(url) {
   const regexp =
     /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu\.be))(\/(?:youtube\.com\/watch\?v=|embed\/|live\/|v\/)?)([\w\-]{11})((?:\?|\&)\S+)?$/;
@@ -51,6 +48,19 @@ export default {
         .setRequired(true),
     ),
   async execute(interaction) {
+    const textChannel = interaction.channel;
+    const { audioState } = interaction.client;
+    let guildAudioState = audioState.get(process.env.GUILD_ID);
+    if (!guildAudioState) {
+      audioState.set(process.env.GUILD_ID, {
+        connection: null,
+        audioPlayer: null,
+        subscription: null,
+        currentSong: null,
+        queue: [],
+      });
+    }
+    guildAudioState = audioState.get(process.env.GUILD_ID);
     const userInVc = interaction.member.voice.channel; // Guildmember in docs
     const botInVc = interaction.guild.members.me.voice.channel; // Guild in docs
     if (!userInVc) {
@@ -73,34 +83,53 @@ export default {
     const videoUrl = checkUrl(interaction.options.getString('url', true));
 
     if (videoUrl) {
-      if (!connection) {
+      // Get video's id
+      const id = await parseId(videoUrl);
+
+      // URL is normalized just in case
+      const url = await normalizeUrl(id);
+
+      const videoInfo = await video_basic_info(url);
+      console.log('info', videoInfo);
+
+      // Initial reply
+      await interaction.reply({
+        content: `Fetching ${videoInfo.video_details.title}`,
+        flags: MessageFlags.Ephemeral,
+      });
+
+      if (!guildAudioState.connection) {
         // Connect to the same voice channel as the user
-        connection = joinVoiceChannel({
+        guildAudioState.connection = joinVoiceChannel({
           channelId: userInVc.id,
           guildId: process.env.GUILD_ID,
           adapterCreator: interaction.guild.voiceAdapterCreator,
         });
       }
 
-      if (!audioPlayer) {
-        audioPlayer = createAudioPlayer({
+      if (!guildAudioState.audioPlayer) {
+        guildAudioState.audioPlayer = createAudioPlayer({
           behaviors: {
             noSubscriber: NoSubscriberBehavior.Pause,
           },
         });
       }
 
-      audioPlayer.on('error', (error) => {
+      guildAudioState.audioPlayer.on('error', (error) => {
         console.error(error);
       });
 
-      audioPlayer.on(AudioPlayerStatus.Idle, () => {
-        interaction.reply('Queue is empty');
+      guildAudioState.audioPlayer.on(AudioPlayerStatus.Idle, () => {
+        textChannel.send('Queue is empty');
       });
 
-      const subscription = connection.subscribe(audioPlayer);
+      if (!guildAudioState.subscription) {
+        guildAudioState.subscription = guildAudioState.connection.subscribe(
+          guildAudioState.audioPlayer,
+        );
+      }
 
-      connection.on(
+      guildAudioState.connection.on(
         VoiceConnectionStatus.Disconnected,
         async (oldState, newState) => {
           console.log('disconnected');
@@ -108,24 +137,31 @@ export default {
             // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
             await Promise.race([
               // entersState allows the connection to be in a specific state for the given time before throwing an error
-              entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-              entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+              entersState(
+                guildAudioState.connection,
+                VoiceConnectionStatus.Signalling,
+                5000,
+              ),
+              entersState(
+                guildAudioState.connection,
+                VoiceConnectionStatus.Connecting,
+                5000,
+              ),
             ]);
           } catch {
-            // Stop the player, unsubscribe the connection and finally destory it, if the bot is truly disconnected, not if it is moving to another voice channel or such
-            audioPlayer.stop();
-            subscription.unsubscribe();
-            connection.destroy();
+            // Stops the player, destroyes the connection and cleanes the stale data, if the bot is truly disconnected, and not for example moving to another channel
+            textChannel.send('Disconnected');
+            guildAudioState.audioPlayer?.stop();
+            guildAudioState.subscription?.unsubscribe();
+            guildAudioState.connection?.destroy();
+            guildAudioState.connection = null;
+            guildAudioState.audioPlayer = null;
+            guildAudioState.subscription = null;
+            guildAudioState.currentSong = null;
+            guildAudioState.queue = [];
           }
         },
       );
-
-      const id = await parseId(videoUrl);
-
-      const url = await normalizeUrl(id);
-      console.log(url);
-
-      interaction.reply('YO');
 
       // yt-dlp options
       const musicProcess = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
@@ -152,7 +188,8 @@ export default {
       const resource = createAudioResource(ffmpeg.stdout, {
         inputType: StreamType.Raw,
       });
-      audioPlayer.play(resource);
+      guildAudioState.audioPlayer.play(resource);
+      textChannel.send('Playing the song');
     } else {
       await interaction.reply({
         content: 'Please provide a valid URL',

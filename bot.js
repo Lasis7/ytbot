@@ -21,8 +21,8 @@ client.commands = new Collection();
 // Collection of command cooldowns
 client.cooldowns = new Collection();
 
-// Collection of playlist queue
-client.queue = new Collection();
+// Collection of bot's audio state
+client.audioState = new Collection();
 
 // Path works after this for whatever reason
 const __dirname = path.resolve();
