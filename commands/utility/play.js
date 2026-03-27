@@ -47,9 +47,9 @@ export default {
         .setRequired(true),
     ),
   async execute(interaction) {
-    const textChannel = interaction.channel;
-    const { songInfo } = interaction.client;
-    const { audioState } = interaction.client;
+    const textChannel = interaction.channel; // Text channel the command was sent from
+    const { songInfo } = interaction.client; // Collection holding song info
+    const { audioState } = interaction.client; // Collection holding info on various things related to audio
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
       audioState.set(process.env.GUILD_ID, {
@@ -191,27 +191,27 @@ export default {
       songInfo.set(resource, videoInfo);
 
       if (guildAudioState.audioPlayer.state.status === 'idle') {
-        const info = songInfo.get(resource);
+        const info = songInfo.get(guildAudioState.queue[0]);
         textChannel.send(
           `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
         );
-        guildAudioState.currentSong = `${info.video_details.title} (duration ${info.video_details.durationRaw})`;
+        guildAudioState.currentSong = guildAudioState.queue[0];
         guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
       }
 
       guildAudioState.audioPlayer.on('stateChange', (oldState, newState) => {
         if (oldState.status === 'playing' && newState.status === 'idle') {
-          songInfo.delete(resource);
+          songInfo.delete(guildAudioState.queue[0]);
           guildAudioState.queue.shift();
           if (guildAudioState.queue.length < 1) {
             textChannel.send('Queue is empty');
             guildAudioState.currentSong = null;
           } else {
-            const info = songInfo.get(resource);
+            const info = songInfo.get(guildAudioState.queue[0]);
             textChannel.send(
               `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
             );
-            guildAudioState.currentSong = `${info.video_details.title} (duration ${info.video_details.durationRaw})`;
+            guildAudioState.currentSong = guildAudioState.queue[0];
             guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
           }
         }

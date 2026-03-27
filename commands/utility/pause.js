@@ -1,12 +1,23 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { getVoiceConnection } from '@discordjs/voice';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('pause')
     .setDescription('Pause the bot'),
   async execute(interaction) {
-    const textChannel = interaction.channel;
+    const { audioState } = interaction.client; // Collection holding info on various things related to audio
+    const { songInfo } = interaction.client; // Collection holding song info
+    let guildAudioState = audioState.get(process.env.GUILD_ID);
+    if (!guildAudioState) {
+      audioState.set(process.env.GUILD_ID, {
+        connection: null,
+        audioPlayer: null,
+        subscription: null,
+        currentSong: null,
+        queue: [],
+      });
+      guildAudioState = audioState.get(process.env.GUILD_ID);
+    }
     const userInVc = interaction.member.voice.channel; // Guildmember in docs
     const botInVc = interaction.guild.members.me.voice.channel; // Guild in docs
 
@@ -17,10 +28,11 @@ export default {
       });
     }
 
-    const connection = getVoiceConnection(interaction.member.voice.guild.id);
-
     // If the bot is in VC but the in a different channel than the user, or there is no player active at the moment
-    if (!connection || (botInVc && userInVc.id !== botInVc.id)) {
+    if (
+      !guildAudioState.connection ||
+      (botInVc && userInVc.id !== botInVc.id)
+    ) {
       return await interaction.reply({
         content:
           'You need to be in the same voice channel as the bot to use this command',
@@ -28,7 +40,21 @@ export default {
       });
     }
 
-    connection.state.subscription.player.pause();
-    textChannel.send('Paused');
+    // Make sure everything related to playing the music is active before the command is usable
+    if (
+      guildAudioState.connection &&
+      guildAudioState.audioPlayer &&
+      guildAudioState.subscription &&
+      guildAudioState.currentSong
+    ) {
+      guildAudioState.audioPlayer.pause();
+      const info = await songInfo.get(guildAudioState.currentSong);
+      return await interaction.reply(`Song ${info.video_details.title} paused`);
+    } else {
+      return await interaction.reply({
+        content: 'There is no song currently playing',
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   },
 };

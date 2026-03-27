@@ -2,8 +2,8 @@ import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 
 export default {
   data: new SlashCommandBuilder()
-    .setName('resume')
-    .setDescription('resume the paused song'),
+    .setName('current')
+    .setDescription('Display the current song'),
   async execute(interaction) {
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
     const { songInfo } = interaction.client; // Collection holding song info
@@ -47,10 +47,9 @@ export default {
       guildAudioState.subscription &&
       guildAudioState.currentSong
     ) {
-      guildAudioState.audioPlayer.unpause();
       const info = await songInfo.get(guildAudioState.currentSong);
       return await interaction.reply(
-        `Resuming song ${info.video_details.title}`,
+        `Current song: ${info.video_details.title}`,
       );
     } else {
       return await interaction.reply({
