@@ -7,7 +7,6 @@ import {
   NoSubscriberBehavior,
   createAudioResource,
   StreamType,
-  AudioPlayerStatus,
 } from '@discordjs/voice';
 import { spawn } from 'node:child_process';
 import 'dotenv/config';
@@ -49,6 +48,7 @@ export default {
     ),
   async execute(interaction) {
     const textChannel = interaction.channel;
+    const { songInfo } = interaction.client;
     const { audioState } = interaction.client;
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
@@ -59,8 +59,9 @@ export default {
         currentSong: null,
         queue: [],
       });
+      guildAudioState = audioState.get(process.env.GUILD_ID);
     }
-    guildAudioState = audioState.get(process.env.GUILD_ID);
+
     const userInVc = interaction.member.voice.channel; // Guildmember in docs
     const botInVc = interaction.guild.members.me.voice.channel; // Guild in docs
     if (!userInVc) {
@@ -93,10 +94,9 @@ export default {
       console.log('info', videoInfo);
 
       // Initial reply
-      await interaction.reply({
-        content: `Fetching ${videoInfo.video_details.title}`,
-        flags: MessageFlags.Ephemeral,
-      });
+      await interaction.reply(
+        `Song ${videoInfo.video_details.title} (duration ${videoInfo.video_details.durationRaw}) added to queue`,
+      );
 
       if (!guildAudioState.connection) {
         // Connect to the same voice channel as the user
@@ -119,15 +119,33 @@ export default {
         console.error(error);
       });
 
-      guildAudioState.audioPlayer.on(AudioPlayerStatus.Idle, () => {
-        textChannel.send('Queue is empty');
-      });
-
       if (!guildAudioState.subscription) {
         guildAudioState.subscription = guildAudioState.connection.subscribe(
           guildAudioState.audioPlayer,
         );
       }
+
+      // yt-dlp options
+      const musicProcess = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
+      musicProcess.stderr.on('data', (error) =>
+        console.error(error.toString()),
+      );
+
+      // Spawn ffmpeg to decode the audio into raw PCM for Discord
+      const ffmpeg = spawn('ffmpeg', [
+        '-i',
+        'pipe:0', // input from yt-dlp stdout
+        '-f',
+        's16le', // PCM 16-bit little endian
+        '-ar',
+        '48000', // sample rate for Discord
+        '-ac',
+        '2', // stereo
+        'pipe:1', // output to stdout
+      ]);
+      ffmpeg.stderr.on('data', (error) => console.error(error.toString()));
+
+      musicProcess.stdout.pipe(ffmpeg.stdin);
 
       guildAudioState.connection.on(
         VoiceConnectionStatus.Disconnected,
@@ -159,37 +177,45 @@ export default {
             guildAudioState.subscription = null;
             guildAudioState.currentSong = null;
             guildAudioState.queue = [];
+            musicProcess.kill();
+            ffmpeg.kill();
           }
         },
       );
 
-      // yt-dlp options
-      const musicProcess = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
-      musicProcess.stderr.on('data', (error) =>
-        console.error(error.toString()),
-      );
-
-      // Spawn ffmpeg to decode the audio into raw PCM for Discord
-      const ffmpeg = spawn('ffmpeg', [
-        '-i',
-        'pipe:0', // input from yt-dlp stdout
-        '-f',
-        's16le', // PCM 16-bit little endian
-        '-ar',
-        '48000', // sample rate for Discord
-        '-ac',
-        '2', // stereo
-        'pipe:1', // output to stdout
-      ]);
-      ffmpeg.stderr.on('data', (error) => console.error(error.toString()));
-
-      musicProcess.stdout.pipe(ffmpeg.stdin);
-
       const resource = createAudioResource(ffmpeg.stdout, {
         inputType: StreamType.Raw,
       });
-      guildAudioState.audioPlayer.play(resource);
-      textChannel.send('Playing the song');
+
+      guildAudioState.queue.push(resource);
+      songInfo.set(resource, videoInfo);
+
+      if (guildAudioState.audioPlayer.state.status === 'idle') {
+        const info = songInfo.get(resource);
+        textChannel.send(
+          `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
+        );
+        guildAudioState.currentSong = `${info.video_details.title} (duration ${info.video_details.durationRaw})`;
+        guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
+      }
+
+      guildAudioState.audioPlayer.on('stateChange', (oldState, newState) => {
+        if (oldState.status === 'playing' && newState.status === 'idle') {
+          songInfo.delete(resource);
+          guildAudioState.queue.shift();
+          if (guildAudioState.queue.length < 1) {
+            textChannel.send('Queue is empty');
+            guildAudioState.currentSong = null;
+          } else {
+            const info = songInfo.get(resource);
+            textChannel.send(
+              `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
+            );
+            guildAudioState.currentSong = `${info.video_details.title} (duration ${info.video_details.durationRaw})`;
+            guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
+          }
+        }
+      });
     } else {
       await interaction.reply({
         content: 'Please provide a valid URL',

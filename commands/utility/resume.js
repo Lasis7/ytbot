@@ -6,6 +6,7 @@ export default {
     .setName('resume')
     .setDescription('resume the paused song'),
   async execute(interaction) {
+    const textChannel = interaction.channel;
     const userInVc = interaction.member.voice.channel; // Guildmember in docs
     const botInVc = interaction.guild.members.me.voice.channel; // Guild in docs
 
@@ -28,6 +29,6 @@ export default {
     }
 
     connection.state.subscription.player.unpause();
-    await interaction.reply('Resuming');
+    textChannel.send('Resuming');
   },
 };

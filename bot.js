@@ -24,6 +24,9 @@ client.cooldowns = new Collection();
 // Collection of bot's audio state
 client.audioState = new Collection();
 
+// Collection of information about each song in queue
+client.songInfo = new Collection();
+
 // Path works after this for whatever reason
 const __dirname = path.resolve();
 

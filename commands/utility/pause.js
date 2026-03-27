@@ -6,6 +6,7 @@ export default {
     .setName('pause')
     .setDescription('Pause the bot'),
   async execute(interaction) {
+    const textChannel = interaction.channel;
     const userInVc = interaction.member.voice.channel; // Guildmember in docs
     const botInVc = interaction.guild.members.me.voice.channel; // Guild in docs
 
@@ -28,6 +29,6 @@ export default {
     }
 
     connection.state.subscription.player.pause();
-    await interaction.reply('Paused');
+    textChannel.send('Paused');
   },
 };
