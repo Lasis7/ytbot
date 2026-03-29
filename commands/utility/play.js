@@ -57,6 +57,8 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        ytdlp: null,
+        ffmpeg: null,
         queue: [],
       });
       guildAudioState = audioState.get(process.env.GUILD_ID);
@@ -126,10 +128,15 @@ export default {
       }
 
       // yt-dlp options
-      const musicProcess = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
-      musicProcess.stderr.on('data', (error) =>
-        console.error(error.toString()),
+      const ytdlp = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
+      ytdlp.stderr.on('data', (data) =>
+        console.log(`[yt-dlp] ${data.toString()}`),
       );
+      guildAudioState.ytdlp = ytdlp;
+
+      ytdlp.on('error', (error) => {
+        console.error(`[yt-dlp error] ${error.toString()}`);
+      });
 
       // Spawn ffmpeg to decode the audio into raw PCM for Discord
       const ffmpeg = spawn('ffmpeg', [
@@ -143,45 +150,16 @@ export default {
         '2', // stereo
         'pipe:1', // output to stdout
       ]);
-      ffmpeg.stderr.on('data', (error) => console.error(error.toString()));
-
-      musicProcess.stdout.pipe(ffmpeg.stdin);
-
-      guildAudioState.connection.on(
-        VoiceConnectionStatus.Disconnected,
-        async (oldState, newState) => {
-          console.log('disconnected');
-          try {
-            // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
-            await Promise.race([
-              // entersState allows the connection to be in a specific state for the given time before throwing an error
-              entersState(
-                guildAudioState.connection,
-                VoiceConnectionStatus.Signalling,
-                5000,
-              ),
-              entersState(
-                guildAudioState.connection,
-                VoiceConnectionStatus.Connecting,
-                5000,
-              ),
-            ]);
-          } catch {
-            // Stops the player, destroyes the connection and cleanes the stale data, if the bot is truly disconnected, and not for example moving to another channel
-            textChannel.send('Disconnected');
-            guildAudioState.audioPlayer?.stop();
-            guildAudioState.subscription?.unsubscribe();
-            guildAudioState.connection?.destroy();
-            guildAudioState.connection = null;
-            guildAudioState.audioPlayer = null;
-            guildAudioState.subscription = null;
-            guildAudioState.currentSong = null;
-            guildAudioState.queue = [];
-            musicProcess.kill();
-            ffmpeg.kill();
-          }
-        },
+      ffmpeg.stderr.on('data', (data) =>
+        console.log(`[ffmpeg] ${data.toString()}`),
       );
+      guildAudioState.ffmpeg = ffmpeg;
+
+      ffmpeg.on('error', (error) => {
+        console.error(`[ffmpeg error] ${error.toString()}`);
+      });
+
+      ytdlp.stdout.pipe(ffmpeg.stdin);
 
       const resource = createAudioResource(ffmpeg.stdout, {
         inputType: StreamType.Raw,
@@ -216,6 +194,44 @@ export default {
           }
         }
       });
+
+      guildAudioState.connection.on(
+        VoiceConnectionStatus.Disconnected,
+        async (oldState, newState) => {
+          console.log('disconnected');
+          try {
+            // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
+            await Promise.race([
+              // entersState allows the connection to be in a specific state for the given time before throwing an error
+              entersState(
+                guildAudioState.connection,
+                VoiceConnectionStatus.Signalling,
+                5000,
+              ),
+              entersState(
+                guildAudioState.connection,
+                VoiceConnectionStatus.Connecting,
+                5000,
+              ),
+            ]);
+          } catch {
+            // Stops the player, destroyes the connection and cleanes the stale data, if the bot is truly disconnected, and not for example moving to another channel
+            textChannel.send('Disconnected');
+            guildAudioState.audioPlayer?.stop();
+            guildAudioState.subscription?.unsubscribe();
+            guildAudioState.connection?.destroy();
+            guildAudioState.connection = null;
+            guildAudioState.audioPlayer = null;
+            guildAudioState.subscription = null;
+            guildAudioState.currentSong = null;
+            guildAudioState.queue = [];
+            guildAudioState.ytdlp.kill('SIGTERM');
+            guildAudioState.ffmpeg.kill('SIGTERM');
+            guildAudioState.ytdlp = null;
+            guildAudioState.ffmpeg = null;
+          }
+        },
+      );
     } else {
       await interaction.reply({
         content: 'Please provide a valid URL',

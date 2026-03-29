@@ -14,6 +14,8 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        ytdlp: null,
+        ffmpeg: null,
         queue: [],
       });
       guildAudioState = audioState.get(process.env.GUILD_ID);
