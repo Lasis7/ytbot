@@ -6,7 +6,6 @@ export default {
     .setDescription('resume the paused song'),
   async execute(interaction) {
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
-    const { songInfo } = interaction.client; // Collection holding song info
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
       audioState.set(process.env.GUILD_ID, {
@@ -14,6 +13,7 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        stateHandlerInit: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -50,9 +50,8 @@ export default {
       guildAudioState.currentSong
     ) {
       guildAudioState.audioPlayer.unpause();
-      const info = await songInfo.get(guildAudioState.currentSong);
       return await interaction.reply(
-        `Resuming song ${info.video_details.title}`,
+        `Resuming song ${guildAudioState.currentSong.title}`,
       );
     } else {
       return await interaction.reply({

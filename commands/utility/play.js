@@ -5,38 +5,14 @@ import {
   entersState,
   createAudioPlayer,
   NoSubscriberBehavior,
-  createAudioResource,
-  StreamType,
 } from '@discordjs/voice';
-import { spawn } from 'node:child_process';
 import 'dotenv/config';
 import { video_basic_info } from 'play-dl';
-
-function checkUrl(url) {
-  const regexp =
-    /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube(-nocookie)?\.com|youtu\.be))(\/(?:youtube\.com\/watch\?v=|embed\/|live\/|v\/)?)([\w\-]{11})((?:\?|\&)\S+)?$/;
-  const matches = url.match(regexp);
-
-  if (matches) {
-    return url;
-  }
-  return false;
-}
-
-async function parseId(url) {
-  const regexp =
-    /(?:youtube(?:-nocookie)?\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
-  const matches = url.match(regexp);
-
-  return matches ? matches[1] : null;
-}
-
-async function normalizeUrl(id) {
-  return `https://www.youtube.com/watch?v=${id}`;
-}
+import yt from '../../helper_functions/yt.js';
+import playNextSong from '../../helper_functions/playfunctions.js';
 
 export default {
-  cooldown: 5,
+  cooldown: 2,
   data: new SlashCommandBuilder()
     .setName('play')
     .setDescription('Provide a URL to play')
@@ -48,7 +24,6 @@ export default {
     ),
   async execute(interaction) {
     const textChannel = interaction.channel; // Text channel the command was sent from
-    const { songInfo } = interaction.client; // Collection holding song info
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
@@ -57,6 +32,7 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        stateHandlerInit: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -83,21 +59,26 @@ export default {
     }
 
     // Check if the given URL was valid
-    const videoUrl = checkUrl(interaction.options.getString('url', true));
+    const videoUrl = yt.checkUrl(interaction.options.getString('url', true));
 
     if (videoUrl) {
       // Get video's id
-      const id = await parseId(videoUrl);
+      const id = yt.parseId(videoUrl);
 
       // URL is normalized just in case
-      const url = await normalizeUrl(id);
+      const url = yt.normalizeUrl(id);
 
       const videoInfo = await video_basic_info(url);
-      console.log('info', videoInfo);
+      guildAudioState.queue.push({
+        title: videoInfo.video_details.title,
+        channel: videoInfo.video_details.channel,
+        duration: videoInfo.video_details.durationRaw,
+        url: url,
+      });
 
       // Initial reply
       await interaction.reply(
-        `Song ${videoInfo.video_details.title} (duration ${videoInfo.video_details.durationRaw}) added to queue`,
+        `Song ${videoInfo.video_details.title} by ${videoInfo.video_details.channel} (duration ${videoInfo.video_details.durationRaw}) added to queue`,
       );
 
       if (!guildAudioState.connection) {
@@ -127,78 +108,46 @@ export default {
         );
       }
 
-      // yt-dlp options
-      const ytdlp = spawn('yt-dlp', ['-f', 'bestaudio', '-o', '-', url]);
-      ytdlp.stderr.on('data', (data) =>
-        console.log(`[yt-dlp] ${data.toString()}`),
-      );
-      guildAudioState.ytdlp = ytdlp;
-
-      ytdlp.on('error', (error) => {
-        console.error(`[yt-dlp error] ${error.toString()}`);
-      });
-
-      // Spawn ffmpeg to decode the audio into raw PCM for Discord
-      const ffmpeg = spawn('ffmpeg', [
-        '-i',
-        'pipe:0', // input from yt-dlp stdout
-        '-f',
-        's16le', // PCM 16-bit little endian
-        '-ar',
-        '48000', // sample rate for Discord
-        '-ac',
-        '2', // stereo
-        'pipe:1', // output to stdout
-      ]);
-      ffmpeg.stderr.on('data', (data) =>
-        console.log(`[ffmpeg] ${data.toString()}`),
-      );
-      guildAudioState.ffmpeg = ffmpeg;
-
-      ffmpeg.on('error', (error) => {
-        console.error(`[ffmpeg error] ${error.toString()}`);
-      });
-
-      ytdlp.stdout.pipe(ffmpeg.stdin);
-
-      const resource = createAudioResource(ffmpeg.stdout, {
-        inputType: StreamType.Raw,
-      });
-
-      guildAudioState.queue.push(resource);
-      songInfo.set(resource, videoInfo);
-
-      if (guildAudioState.audioPlayer.state.status === 'idle') {
-        const info = songInfo.get(guildAudioState.queue[0]);
+      // Initial state when the bot joins the voicechat
+      if (!guildAudioState.currentSong && guildAudioState.queue.length > 0) {
+        playNextSong(guildAudioState);
         textChannel.send(
-          `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
+          `Playing ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
         );
-        guildAudioState.currentSong = guildAudioState.queue[0];
-        guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
       }
 
-      guildAudioState.audioPlayer.on('stateChange', (oldState, newState) => {
-        if (oldState.status === 'playing' && newState.status === 'idle') {
-          songInfo.delete(guildAudioState.queue[0]);
-          guildAudioState.queue.shift();
-          if (guildAudioState.queue.length < 1) {
-            textChannel.send('Queue is empty');
-            guildAudioState.currentSong = null;
-          } else {
-            const info = songInfo.get(guildAudioState.queue[0]);
-            textChannel.send(
-              `Playing ${info.video_details.title} (duration ${info.video_details.durationRaw})`,
-            );
-            guildAudioState.currentSong = guildAudioState.queue[0];
-            guildAudioState.audioPlayer.play(guildAudioState.queue[0]);
-          }
-        }
-      });
+      // Statehandler for identifying when the song ends
+      if (!guildAudioState.stateHandlerInit) {
+        guildAudioState.stateHandlerInit = true;
 
+        guildAudioState.audioPlayer.on('stateChange', (oldState, newState) => {
+          if (oldState.status === 'playing' && newState.status === 'idle') {
+            // ytdlp and ffmpeg are terminated between each song to avoid information overleaking
+            guildAudioState.ytdlp.kill('SIGTERM');
+            guildAudioState.ffmpeg.kill('SIGTERM');
+            console.log('ytdlp killed');
+            console.log('ffmpeg killed');
+
+            if (guildAudioState.queue.length < 1) {
+              guildAudioState.currentSong = null;
+              textChannel.send('Queue is empty');
+            } else {
+              // Only start the new song when the audioplayer enters idle mode
+              setImmediate(() => {
+                playNextSong(guildAudioState);
+                textChannel.send(
+                  `Playing ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
+                );
+              });
+            }
+          }
+        });
+      }
+
+      // Handle bot disconnecting
       guildAudioState.connection.on(
         VoiceConnectionStatus.Disconnected,
         async (oldState, newState) => {
-          console.log('disconnected');
           try {
             // Promise.race is a promise that is either resolved or rejected based on if either promise inside it is resolved or rejected
             await Promise.race([
@@ -215,20 +164,27 @@ export default {
               ),
             ]);
           } catch {
-            // Stops the player, destroyes the connection and cleanes the stale data, if the bot is truly disconnected, and not for example moving to another channel
+            // Stops the player, destroys the connection and cleans the stale data, if the bot is truly disconnected, and not for example moving to another channel
             textChannel.send('Disconnected');
             guildAudioState.audioPlayer?.stop();
             guildAudioState.subscription?.unsubscribe();
-            guildAudioState.connection?.destroy();
+            guildAudioState.audioPlayer?.removeAllListeners();
+            try {
+              guildAudioState.ytdlp?.kill('SIGTERM');
+              guildAudioState.ffmpeg?.kill('SIGTERM');
+            } catch (e) {
+              console.error('Process killing error', e);
+            }
             guildAudioState.connection = null;
             guildAudioState.audioPlayer = null;
             guildAudioState.subscription = null;
             guildAudioState.currentSong = null;
+            guildAudioState.stateHandlerInit = null;
             guildAudioState.queue = [];
-            guildAudioState.ytdlp.kill('SIGTERM');
-            guildAudioState.ffmpeg.kill('SIGTERM');
             guildAudioState.ytdlp = null;
             guildAudioState.ffmpeg = null;
+
+            guildAudioState.connection?.destroy();
           }
         },
       );

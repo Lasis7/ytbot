@@ -6,7 +6,6 @@ export default {
     .setDescription('Skip the current song'),
   async execute(interaction) {
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
-    const { songInfo } = interaction.client; // Collection holding song info
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
       audioState.set(process.env.GUILD_ID, {
@@ -14,6 +13,7 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        stateHandlerInit: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -46,8 +46,10 @@ export default {
       guildAudioState.subscription &&
       guildAudioState.currentSong
     ) {
-      const info = await songInfo.get(guildAudioState.currentSong);
-      await interaction.reply(`Skipped song: ${info.video_details.title}`);
+      guildAudioState.audioPlayer.stop();
+      await interaction.reply(
+        `Skipped song: ${guildAudioState.currentSong.title}`,
+      );
     } else {
       return await interaction.reply({
         content: 'There is no song currently playing',

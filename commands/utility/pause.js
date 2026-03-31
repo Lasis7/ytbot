@@ -6,7 +6,6 @@ export default {
     .setDescription('Pause the bot'),
   async execute(interaction) {
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
-    const { songInfo } = interaction.client; // Collection holding song info
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
       audioState.set(process.env.GUILD_ID, {
@@ -14,6 +13,7 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        stateHandlerInit: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -50,8 +50,9 @@ export default {
       guildAudioState.currentSong
     ) {
       guildAudioState.audioPlayer.pause();
-      const info = await songInfo.get(guildAudioState.currentSong);
-      return await interaction.reply(`Song ${info.video_details.title} paused`);
+      return await interaction.reply(
+        `Song ${guildAudioState.currentSong.title} paused`,
+      );
     } else {
       return await interaction.reply({
         content: 'There is no song currently playing',
