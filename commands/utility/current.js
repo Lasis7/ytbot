@@ -6,7 +6,6 @@ export default {
     .setDescription('Display the current song'),
   async execute(interaction) {
     const { audioState } = interaction.client; // Collection holding info on various things related to audio
-    const { songInfo } = interaction.client; // Collection holding song info
     let guildAudioState = audioState.get(process.env.GUILD_ID);
     if (!guildAudioState) {
       audioState.set(process.env.GUILD_ID, {
@@ -14,6 +13,7 @@ export default {
         audioPlayer: null,
         subscription: null,
         currentSong: null,
+        stateHandlerInit: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -49,9 +49,8 @@ export default {
       guildAudioState.subscription &&
       guildAudioState.currentSong
     ) {
-      const info = await songInfo.get(guildAudioState.currentSong);
       return await interaction.reply(
-        `Current song: ${info.video_details.title}`,
+        `Current song: ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
       );
     } else {
       return await interaction.reply({
