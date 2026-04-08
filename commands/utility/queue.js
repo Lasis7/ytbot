@@ -56,33 +56,28 @@ export default {
       }),
     );
 
+    // Change the url to whatever you want
+    const thumbnailUrl = 'https://i.imgur.com/va5cEjo.jpeg';
+
     const exampleEmbed = {
       color: 0x0099ff,
       title: 'Some title',
-      url: 'https://discord.js.org',
-      author: {
-        name: 'Some name',
-        icon_url: 'https://i.imgur.com/AfFp7pu.png',
-        url: 'https://discord.js.org',
-      },
-      description: 'Some description here',
       thumbnail: {
-        url: 'https://i.imgur.com/AfFp7pu.png',
+        url: thumbnailUrl,
       },
       fields:
         songs.length > 0
           ? songs
           : [{ name: '\u200b', value: 'Queue is empty' }],
-      image: {
-        url: 'https://i.imgur.com/AfFp7pu.png',
-      },
       timestamp: new Date().toISOString(),
       footer: {
-        text: 'Some footer text here',
-        icon_url: 'https://i.imgur.com/AfFp7pu.png',
+        text: '\u200b',
+        icon_url: thumbnailUrl,
       },
     };
 
-    textChannel.send({ embeds: [exampleEmbed] });
+    return await interaction.reply({ embeds: [exampleEmbed] });
+
+    // textChannel.send({ embeds: [exampleEmbed] });
   },
 };
