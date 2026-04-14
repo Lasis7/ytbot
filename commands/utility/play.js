@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, MessageFlags, bold } from 'discord.js';
 import {
   joinVoiceChannel,
   VoiceConnectionStatus,
@@ -73,12 +73,15 @@ export default {
         title: videoInfo.video_details.title,
         channel: videoInfo.video_details.channel,
         duration: videoInfo.video_details.durationRaw,
+        thumbnail: videoInfo.video_details.thumbnails.at(-1).url,
         url: url,
       });
 
+      console.log(videoInfo.video_details.thumbnails);
+
       // Initial reply
       await interaction.reply(
-        `Song ${videoInfo.video_details.title} by ${videoInfo.video_details.channel} (duration ${videoInfo.video_details.durationRaw}) added to queue`,
+        `Song ${bold(videoInfo.video_details.title)} by ${bold(videoInfo.video_details.channel)} (duration ${bold(videoInfo.video_details.durationRaw)}) added to queue`,
       );
 
       if (!guildAudioState.connection) {

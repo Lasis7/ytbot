@@ -8,6 +8,8 @@ function playNextSong(audioState) {
   const currentSong = audioState.queue.shift();
   audioState.currentSong = currentSong;
 
+  console.clear();
+
   const ytdlp = spawn('yt-dlp', [
     '-f',
     'bestaudio',
