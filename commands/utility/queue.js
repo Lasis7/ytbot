@@ -42,14 +42,15 @@ export default {
 
     const songs = formQueue(guildAudioState);
 
-    // Change the url to whatever you want
+    // Change the urls to whatever you want
+    const queueImgUrl = guildAudioState.currentSong.thumbnail;
     const iconUrl = 'https://i.imgur.com/va5cEjo.jpeg';
 
     const queueEmbed = {
-      color: 0x0099ff,
+      color: 0x32a852,
       title: bold('Queue'),
       thumbnail: {
-        url: guildAudioState.currentSong.thumbnail,
+        url: queueImgUrl,
       },
       fields:
         songs.length > 0

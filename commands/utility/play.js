@@ -10,6 +10,7 @@ import 'dotenv/config';
 import { video_basic_info } from 'play-dl';
 import yt from '../../helper_functions/yt.js';
 import playNextSong from '../../helper_functions/playfunctions.js';
+import { formPlayingEmbed } from '../../helper_functions/formplayingembed.js';
 
 export default {
   cooldown: 2,
@@ -77,12 +78,14 @@ export default {
         url: url,
       });
 
-      console.log(videoInfo.video_details.thumbnails);
+      console.log(videoInfo.video_details.thumbnails.at(-1));
 
       // Initial reply
-      await interaction.reply(
-        `Song ${bold(videoInfo.video_details.title)} by ${bold(videoInfo.video_details.channel)} (duration ${bold(videoInfo.video_details.durationRaw)}) added to queue`,
-      );
+      const response = await interaction.reply({
+        content: `Song ${bold(videoInfo.video_details.title)} by ${bold(videoInfo.video_details.channel)} (duration ${bold(videoInfo.video_details.durationRaw)}) added to queue`,
+        withResponse: true,
+      });
+      response.resource.message.react('✅');
 
       if (!guildAudioState.connection) {
         // Connect to the same voice channel as the user
@@ -114,9 +117,13 @@ export default {
       // Initial state when the bot joins the voicechat
       if (!guildAudioState.currentSong && guildAudioState.queue.length > 0) {
         playNextSong(guildAudioState);
-        textChannel.send(
-          `Playing ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
+        // Embed needs to be formed after calling playNextSong, because otherwise guildAudioState.currentSong is undefined
+        const playingEmbed = formPlayingEmbed(
+          'Playing',
+          guildAudioState.currentSong.thumbnail,
+          guildAudioState,
         );
+        textChannel.send({ embeds: [playingEmbed] });
       }
 
       // Statehandler for identifying when the song ends
@@ -138,9 +145,12 @@ export default {
               // Only start the new song when the audioplayer enters idle mode
               setImmediate(() => {
                 playNextSong(guildAudioState);
-                textChannel.send(
-                  `Playing ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
+                const playingEmbed = formPlayingEmbed(
+                  'Playing',
+                  guildAudioState.currentSong.thumbnail,
+                  guildAudioState,
                 );
+                textChannel.send({ embeds: [playingEmbed] });
               });
             }
           }
