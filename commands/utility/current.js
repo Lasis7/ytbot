@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
+import { formPlayingEmbed } from '../../helper_functions/formplayingembed';
 
 export default {
   data: new SlashCommandBuilder()
@@ -49,9 +50,14 @@ export default {
       guildAudioState.subscription &&
       guildAudioState.currentSong
     ) {
-      return await interaction.reply(
-        `Current song: ${guildAudioState.currentSong.title} by ${guildAudioState.currentSong.channel} (duration ${guildAudioState.currentSong.duration})`,
+      const playingEmbed = formPlayingEmbed(
+        'Currently playing',
+        guildAudioState.currentSong.thumbnail,
+        guildAudioState,
       );
+      return await interaction.reply({
+        embeds: [playingEmbed],
+      });
     } else {
       return await interaction.reply({
         content: 'There is no song currently playing',

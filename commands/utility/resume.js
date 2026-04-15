@@ -50,9 +50,11 @@ export default {
       guildAudioState.currentSong
     ) {
       guildAudioState.audioPlayer.unpause();
-      return await interaction.reply(
-        `Resuming song ${guildAudioState.currentSong.title}`,
-      );
+      const response = await interaction.reply({
+        content: `Resuming song ${guildAudioState.currentSong.title}`,
+        withResponse: true,
+      });
+      response.resource.message.react('✅');
     } else {
       return await interaction.reply({
         content: 'There is no song currently playing',

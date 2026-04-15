@@ -47,9 +47,11 @@ export default {
       guildAudioState.currentSong
     ) {
       guildAudioState.audioPlayer.stop();
-      await interaction.reply(
-        `Skipped song: ${guildAudioState.currentSong.title}`,
-      );
+      const response = await interaction.reply({
+        content: `Skipped song: ${guildAudioState.currentSong.title}`,
+        withResponse: true,
+      });
+      response.resource.message.react('✅');
     } else {
       return await interaction.reply({
         content: 'There is no song currently playing',
