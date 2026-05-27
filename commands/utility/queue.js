@@ -15,6 +15,7 @@ export default {
         subscription: null,
         currentSong: null,
         stateHandlerInit: false,
+        errorHandler: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],

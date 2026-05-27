@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { formPlayingEmbed } from '../../helper_functions/formplayingembed';
+import { formPlayingEmbed } from '../../helper_functions/formplayingembed.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -15,6 +15,7 @@ export default {
         subscription: null,
         currentSong: null,
         stateHandlerInit: false,
+        errorHandler: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],

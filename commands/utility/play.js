@@ -34,6 +34,7 @@ export default {
         subscription: null,
         currentSong: null,
         stateHandlerInit: false,
+        errorHandler: false,
         ytdlp: null,
         ffmpeg: null,
         queue: [],
@@ -104,9 +105,12 @@ export default {
         });
       }
 
-      guildAudioState.audioPlayer.on('error', (error) => {
-        console.error(error);
-      });
+      if (!guildAudioState.errorHandler) {
+        guildAudioState.errorHandler = true;
+        guildAudioState.audioPlayer.on('error', (error) => {
+          console.error(error);
+        });
+      }
 
       if (!guildAudioState.subscription) {
         guildAudioState.subscription = guildAudioState.connection.subscribe(
