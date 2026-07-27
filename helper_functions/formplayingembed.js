@@ -1,8 +1,14 @@
 import { bold } from 'discord.js';
+import { nameParser } from './nameparser.js';
 
 const iconUrl = 'https://i.imgur.com/va5cEjo.jpeg';
 
 export function formPlayingEmbed(title, img, audioState) {
+  const songInfo = nameParser(
+    audioState.currentSong.title,
+    audioState.currentSong.channel,
+  );
+
   const playingEmbed = {
     color: 0x32a852,
     title: bold(title),
@@ -12,7 +18,7 @@ export function formPlayingEmbed(title, img, audioState) {
     fields: [
       {
         name: '\u200b',
-        value: `${audioState.currentSong.title} by ${audioState.currentSong.channel} (duration ${audioState.currentSong.duration})`,
+        value: `${bold(songInfo.song)} by ${bold(songInfo.creator)} (Duration ${bold(audioState.currentSong.duration)})`,
       },
     ],
     timestamp: new Date().toISOString(),
