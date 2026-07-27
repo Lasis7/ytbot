@@ -11,6 +11,7 @@ import { video_basic_info } from 'play-dl';
 import yt from '../../helper_functions/yt.js';
 import playNextSong from '../../helper_functions/playfunctions.js';
 import { formPlayingEmbed } from '../../helper_functions/formplayingembed.js';
+import { nameParser } from '../../helper_functions/nameparser.js';
 
 export default {
   cooldown: 2,
@@ -79,11 +80,14 @@ export default {
         url: url,
       });
 
-      console.log(videoInfo.video_details.thumbnails.at(-1));
+      const videoInfoz = nameParser(
+        videoInfo.video_details.title,
+        videoInfo.video_details.channel,
+      );
 
       // Initial reply
       const response = await interaction.reply({
-        content: `Song ${bold(videoInfo.video_details.title)} by ${bold(videoInfo.video_details.channel)} (duration ${bold(videoInfo.video_details.durationRaw)}) added to queue`,
+        content: `Song ${bold(videoInfoz.song)} by ${bold(videoInfoz.creator)} (Duration ${bold(videoInfo.video_details.durationRaw)}) added to queue`,
         withResponse: true,
       });
       response.resource.message.react('✅');
@@ -136,6 +140,9 @@ export default {
 
         guildAudioState.audioPlayer.on('stateChange', (oldState, newState) => {
           if (oldState.status === 'playing' && newState.status === 'idle') {
+            // Unpipe the stream pipe, so ffmpeg doesn't receive any more data after it is closed
+            guildAudioState.ytdlp.stdout.unpipe(guildAudioState.ffmpeg.stdin);
+            guildAudioState.ffmpeg.stdin.end();
             // ytdlp and ffmpeg are terminated between each song to avoid information overleaking
             guildAudioState.ytdlp.kill('SIGTERM');
             guildAudioState.ffmpeg.kill('SIGTERM');
@@ -187,6 +194,9 @@ export default {
             guildAudioState.subscription?.unsubscribe();
             guildAudioState.audioPlayer?.removeAllListeners();
             try {
+              // Also do this here, just in case
+              guildAudioState.ytdlp.stdout.unpipe(guildAudioState.ffmpeg.stdin);
+              guildAudioState.ffmpeg.stdin.end();
               guildAudioState.ytdlp?.kill('SIGTERM');
               guildAudioState.ffmpeg?.kill('SIGTERM');
             } catch (e) {
